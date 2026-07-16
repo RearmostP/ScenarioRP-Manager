@@ -1,0 +1,52 @@
+QWidget {
+    background: #111318;
+    color: #eef1f5;
+    font-size: 14px;
+}
+
+QLabel#titleLabel {
+    font-size: 26px;
+    font-weight: 700;
+}
+
+QLabel#projectRootLabel,
+QLabel#fxTitleLabel,
+QLabel#botTitleLabel,
+QLabel#environmentTitleLabel,
+QLabel#txadminTitleLabel,
+QLabel#databaseTitleLabel {
+    color: #a9b3c1;
+}
+
+QFrame {
+    background: #1a1d24;
+    border: 1px solid #2b313d;
+    border-radius: 8px;
+}
+
+QPushButton {
+    background: #2f6feb;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: 600;
+    min-height: 36px;
+    padding: 0 14px;
+}
+
+QPushButton:hover {
+    background: #3f7ff5;
+}
+
+QPushButton:disabled {
+    background: #373d49;
+    color: #858e9c;
+}
+
+QPlainTextEdit {
+    background: #080a0f;
+    border: 1px solid #2b313d;
+    border-radius: 8px;
+    color: #d9e2ef;
+    padding: 12px;
+}
