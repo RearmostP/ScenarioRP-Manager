@@ -1,7 +1,7 @@
 . "$PSScriptRoot\common.ps1"
 
 Write-ManagerLine "INFO" "Manager" "Safe Shutdown requested"
-& "$PSScriptRoot\stop-server.ps1"
+& "$PSScriptRoot\stop-all.ps1"
 $stopCode = $LASTEXITCODE
 
 Write-ManagerLine "INFO" "Manager" "TODO: MariaDB shutdown is not implemented in this stage"

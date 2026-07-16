@@ -27,6 +27,7 @@ $ServerCfg = Resolve-ProjectPath $Config.server_cfg
 $BotDir = Resolve-ProjectPath $Config.discord_bot_dir
 $BotPython = Resolve-ProjectPath $Config.discord_bot_python
 $BotFile = Resolve-ProjectPath $Config.discord_bot_file
+$BotOfflineAnnouncer = Join-Path $BotDir "announce_offline.py"
 $FxServerDir = Split-Path -Parent $FxServerExe
 $TxDataRoot = Split-Path -Parent $TxDataDir
 $TxAdminProfile = [string]$Config.txadmin_profile
@@ -41,6 +42,7 @@ $TxAdminHost = if ($TxAdminUri.Host) { $TxAdminUri.Host } else { "127.0.0.1" }
 $TxAdminPort = if ($TxAdminUri.Port -gt 0) { $TxAdminUri.Port } else { 80 }
 $FxPidFile = Join-Path $StateDir "fxserver.pid"
 $BotPidFile = Join-Path $StateDir "discord-bot.pid"
+$DatabaseServiceNames = @("MariaDB", "MariaDB11", "MariaDB11.4", "MySQL", "MySQL80")
 
 function Write-ManagerLine {
     param(
@@ -61,6 +63,71 @@ function Write-StatusLine {
     )
 
     Write-Output "STATUS|$Name|$State|$Message"
+}
+
+function Get-ServerEnvironmentChecks {
+    return @(
+        @{ Name = "FXServer.exe"; Path = $FxServerExe },
+        @{ Name = "txData profile"; Path = $TxDataDir },
+        @{ Name = "server.cfg"; Path = $ServerCfg },
+        @{ Name = "txAdmin profile config"; Path = $TxAdminConfig }
+    )
+}
+
+function Get-DiscordBotEnvironmentChecks {
+    return @(
+        @{ Name = "Discord bot directory"; Path = $BotDir },
+        @{ Name = "Discord bot Python"; Path = $BotPython },
+        @{ Name = "Discord bot file"; Path = $BotFile },
+        @{ Name = "Discord offline announcer"; Path = $BotOfflineAnnouncer }
+    )
+}
+
+function Get-EnvironmentChecks {
+    return @(
+        Get-ServerEnvironmentChecks
+        Get-DiscordBotEnvironmentChecks
+    )
+}
+
+function Test-EnvironmentChecks {
+    param(
+        [Parameter(Mandatory)][array]$Checks,
+        [bool]$LogDetails = $true
+    )
+
+    $missing = @()
+    foreach ($check in $Checks) {
+        if (Test-Path -LiteralPath $check.Path) {
+            if ($LogDetails) {
+                Write-ManagerLine "INFO" "Environment" "OK | $($check.Name) | $($check.Path)"
+            }
+        }
+        else {
+            $missing += $check
+            if ($LogDetails) {
+                Write-ManagerLine "ERROR" "Environment" "Missing | $($check.Name) | $($check.Path)"
+            }
+        }
+    }
+
+    if ($missing.Count -eq 0) {
+        return @{
+            Ok = $true
+            Message = "All required paths exist"
+        }
+    }
+
+    return @{
+        Ok = $false
+        Message = "$($missing.Count) required path(s) missing"
+    }
+}
+
+function Test-Environment {
+    param([bool]$LogDetails = $true)
+
+    return Test-EnvironmentChecks -Checks @(Get-EnvironmentChecks) -LogDetails $LogDetails
 }
 
 function Get-PidFromFile {
@@ -286,4 +353,67 @@ function Get-ListeningPid {
     }
 
     return $null
+}
+
+function Get-DatabaseEndpoint {
+    if (-not (Test-Path -LiteralPath $ServerCfg)) {
+        return $null
+    }
+
+    $line = Get-Content -LiteralPath $ServerCfg -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match 'mysql_connection_string' } |
+        Select-Object -First 1
+    if (-not $line) {
+        return $null
+    }
+
+    $match = [regex]::Match($line, '"([^"]+)"')
+    if (-not $match.Success) {
+        return $null
+    }
+
+    try {
+        $uri = [Uri]$match.Groups[1].Value
+        $port = if ($uri.Port -gt 0) { $uri.Port } else { 3306 }
+        return @{
+            Host = $uri.Host
+            Port = $port
+            Source = "mysql_connection_string"
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-DatabaseStatus {
+    $endpoint = Get-DatabaseEndpoint
+    if ($endpoint) {
+        if (Test-TcpPort -HostName $endpoint.Host -Port $endpoint.Port) {
+            return @{
+                State = "Running"
+                Message = "Listening on $($endpoint.Host):$($endpoint.Port)"
+            }
+        }
+
+        return @{
+            State = "Stopped"
+            Message = "Not listening on $($endpoint.Host):$($endpoint.Port)"
+        }
+    }
+
+    foreach ($name in $DatabaseServiceNames) {
+        $service = Get-Service -Name $name -ErrorAction SilentlyContinue
+        if ($service) {
+            return @{
+                State = [string]$service.Status
+                Message = "$name service"
+            }
+        }
+    }
+
+    return @{
+        State = "Unknown"
+        Message = "No database endpoint or known service found"
+    }
 }

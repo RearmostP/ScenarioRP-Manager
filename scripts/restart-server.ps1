@@ -1,6 +1,6 @@
 . "$PSScriptRoot\common.ps1"
 
-Write-ManagerLine "INFO" "Manager" "Restarting ScenarioRP"
+Write-ManagerLine "INFO" "FXServer" "Restarting FXServer"
 & "$PSScriptRoot\stop-server.ps1"
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

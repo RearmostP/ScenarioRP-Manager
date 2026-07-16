@@ -1,5 +1,13 @@
 . "$PSScriptRoot\common.ps1"
 
+$environment = Test-Environment -LogDetails $false
+if ($environment.Ok) {
+    Write-StatusLine "Environment" "OK" $environment.Message
+}
+else {
+    Write-StatusLine "Environment" "Error" $environment.Message
+}
+
 $fxPid = Get-PidFromFile $FxPidFile
 if ($fxPid) {
     $fx = Get-ManagedProcess -ProcessId $fxPid -ExpectedName "FXServer.exe" -ExpectedPath $FxServerExe
@@ -49,10 +57,5 @@ else {
     Write-StatusLine "txAdmin" "Stopped" "Not listening on ${TxAdminHost}:$TxAdminPort"
 }
 
-$maria = Get-Service -Name "MariaDB" -ErrorAction SilentlyContinue
-if ($maria) {
-    Write-StatusLine "Database" $maria.Status "MariaDB service"
-}
-else {
-    Write-StatusLine "Database" "Unknown" "MariaDB service not found"
-}
+$database = Get-DatabaseStatus
+Write-StatusLine "Database" $database.State $database.Message

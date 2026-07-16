@@ -1,7 +1,7 @@
 . "$PSScriptRoot\common.ps1"
 
-& "$PSScriptRoot\environment-check.ps1"
-if (-not $?) {
+$environment = Test-EnvironmentChecks -Checks @(Get-ServerEnvironmentChecks)
+if (-not $environment.Ok) {
     exit 1
 }
 
@@ -49,16 +49,4 @@ else {
     }
 }
 
-$botPid = Get-PidFromFile $BotPidFile
-if ($botPid -and (Get-ManagedProcess -ProcessId $botPid -ExpectedName "python.exe" -ExpectedPath $BotPython -CommandContains $BotFile)) {
-    Write-ManagerLine "INFO" "DiscordBot" "Already running with PID $botPid"
-}
-else {
-    Remove-StalePid $BotPidFile
-    Stop-ManagedProcessesBySignature -ExpectedName "python.exe" -CommandContains $BotFile -Source "DiscordBot" | Out-Null
-
-    Write-ManagerLine "INFO" "DiscordBot" "Starting Discord Bot"
-    $bot = Start-Process -FilePath $BotPython -ArgumentList "`"$BotFile`"" -WorkingDirectory $BotDir -WindowStyle Hidden -PassThru
-    $bot.Id | Set-Content -LiteralPath $BotPidFile
-    Write-ManagerLine "INFO" "DiscordBot" "Started with PID $($bot.Id)"
-}
+exit 0

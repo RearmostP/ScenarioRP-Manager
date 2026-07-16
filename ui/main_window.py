@@ -95,9 +95,9 @@ class MainWindow(QMainWindow):
         self.action_runner.output.connect(self.append_output)
         self.action_runner.finished.connect(self.action_finished)
         self.status_runner.finished.connect(self.status_finished)
-        self.start_button.clicked.connect(lambda: self.run_script("start-server.ps1"))
-        self.stop_button.clicked.connect(lambda: self.run_script("stop-server.ps1"))
-        self.restart_button.clicked.connect(lambda: self.run_script("restart-server.ps1"))
+        self.start_button.clicked.connect(lambda: self.run_script("start-all.ps1"))
+        self.stop_button.clicked.connect(lambda: self.run_script("stop-all.ps1"))
+        self.restart_button.clicked.connect(lambda: self.run_script("restart-all.ps1"))
         self.safe_shutdown_button.clicked.connect(lambda: self.run_script("safe-shutdown.ps1"))
         self.txadmin_button.clicked.connect(lambda: self.run_script("open-txadmin.ps1"))
 
@@ -146,8 +146,8 @@ class MainWindow(QMainWindow):
             self._set_status(self.txadmin_state_label, self.txadmin_message_label, state, message)
         elif name == "Database":
             self._set_status(self.database_state_label, self.database_message_label, state, message)
-
-        self._set_status(self.environment_state_label, self.environment_message_label, "OK", "Use environment-check.ps1 for details")
+        elif name == "Environment":
+            self._set_status(self.environment_state_label, self.environment_message_label, state, message)
 
     def _set_status(self, state_label: QLabel, message_label: QLabel, state: str, message: str) -> None:
         state_label.setText(state)
