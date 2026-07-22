@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 
 
@@ -23,6 +24,7 @@ REQUIRED_DISTRIBUTION_FILES = (
     Path("ScenarioRP-Manager.exe"),
     Path("ScenarioRPUpdater.exe"),
     Path("_internal"),
+    Path("assets") / "ScenarioRP_48x48.ico",
     Path("assets") / "myLogo.png",
     Path("system_data") / "config.json",
     Path("system_data") / "update_config.json",
@@ -92,10 +94,8 @@ def ensure_windows() -> None:
 def clean_outputs() -> None:
     """Remove only known generated build outputs."""
     safe_rmtree(BUILD_WORK_DIR, BUILD_DIR)
-    safe_rmtree(FINAL_DIST_DIR, DIST_DIR)
-    version = read_app_version()
-    zip_path = DIST_DIR / f"ScenarioRP-Manager-v{version}-Windows.zip"
-    if zip_path.exists():
+    prepare_empty_directory(FINAL_DIST_DIR, DIST_DIR)
+    for zip_path in DIST_DIR.glob("ScenarioRP-Manager-v*-Windows.zip"):
         ensure_inside(zip_path, DIST_DIR)
         zip_path.unlink()
 
@@ -135,9 +135,8 @@ def assemble_distribution() -> None:
     if not updater_bundle.is_dir():
         raise BuildError(f"Missing updater PyInstaller output: {updater_bundle}")
 
-    safe_rmtree(FINAL_DIST_DIR, DIST_DIR)
-    FINAL_DIST_DIR.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(manager_bundle, FINAL_DIST_DIR)
+    prepare_empty_directory(FINAL_DIST_DIR, DIST_DIR)
+    shutil.copytree(manager_bundle, FINAL_DIST_DIR, dirs_exist_ok=True)
 
     merge_tree(updater_bundle / "_internal", FINAL_DIST_DIR / "_internal")
     copy_required_file(updater_bundle / "ScenarioRPUpdater.exe", FINAL_DIST_DIR / "ScenarioRPUpdater.exe")
@@ -247,9 +246,40 @@ def safe_rmtree(path: Path, allowed_parent: Path) -> None:
     if path.resolve() == allowed_parent.resolve():
         raise BuildError(f"Refusing to remove parent directory directly: {path}")
     if path.is_dir():
-        shutil.rmtree(path)
+        rmtree_with_retry(path)
     else:
         path.unlink()
+
+
+def prepare_empty_directory(path: Path, allowed_parent: Path) -> None:
+    """Ensure a generated directory exists and contains no files."""
+    ensure_inside(path, allowed_parent)
+    if not path.exists():
+        path.mkdir(parents=True, exist_ok=True)
+        return
+    if not path.is_dir():
+        path.unlink()
+        path.mkdir(parents=True, exist_ok=True)
+        return
+    for child in path.iterdir():
+        if child.is_dir():
+            safe_rmtree(child, path)
+        else:
+            child.unlink()
+
+
+def rmtree_with_retry(path: Path, attempts: int = 5, delay_seconds: float = 0.5) -> None:
+    """Remove a directory, retrying briefly for transient Windows file locks."""
+    last_error: OSError | None = None
+    for _ in range(attempts):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(delay_seconds)
+    if last_error is not None:
+        raise last_error
 
 
 def ensure_inside(path: Path, parent: Path) -> Path:

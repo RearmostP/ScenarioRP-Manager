@@ -40,7 +40,7 @@ dist/ScenarioRP-Manager/
 The portable ZIP is created at:
 
 ```text
-dist/ScenarioRP-Manager-v0.1.1-Windows.zip
+dist/ScenarioRP-Manager-v0.1.2-Windows.zip
 ```
 
 The version is read from `app/updater/client/version.py`; do not duplicate it manually in the build script.
@@ -54,6 +54,7 @@ dist/
     ├── ScenarioRPUpdater.exe
     ├── _internal/
     ├── assets/
+    │   ├── ScenarioRP_48x48.ico
     │   └── myLogo.png
     ├── system_data/
     │   ├── config.json
@@ -87,6 +88,7 @@ This means writable update data is never stored inside `_internal`.
 The build script verifies:
 
 - both executables exist
+- `assets/ScenarioRP_48x48.ico` exists
 - `_internal` exists
 - `assets/myLogo.png` exists
 - `system_data/config.json` exists
@@ -120,7 +122,7 @@ If GUI automation is unreliable on the build machine, the first three steps must
 
 ## Sending to another person
 
-1. Send `dist/ScenarioRP-Manager-v0.1.1-Windows.zip`.
+1. Send `dist/ScenarioRP-Manager-v0.1.2-Windows.zip`.
 2. The user extracts the entire ZIP.
 3. The user opens `ScenarioRP-Manager.exe`.
 
@@ -133,7 +135,7 @@ The normal build command removes stale generated output from:
 ```text
 build/work/
 dist/ScenarioRP-Manager/
-dist/ScenarioRP-Manager-v0.1.1-Windows.zip
+dist/ScenarioRP-Manager-v0.1.2-Windows.zip
 ```
 
 You can also delete `build/work/` and `dist/` manually.

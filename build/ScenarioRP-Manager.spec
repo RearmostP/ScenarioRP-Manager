@@ -5,6 +5,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(SPECPATH).resolve().parent
 ICON_CANDIDATES = [
+    REPO_ROOT / "assets" / "ScenarioRP_48x48.ico",
     REPO_ROOT / "assets" / "ScenarioRP-Manager.ico",
     REPO_ROOT / "assets" / "app.ico",
 ]

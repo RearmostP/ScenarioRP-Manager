@@ -15,7 +15,9 @@ def main() -> int:
     config = load_config(paths.system("config.json"))
 
     app = QApplication(sys.argv)
-    icon_path = paths.asset("myLogo.png")
+    icon_path = paths.asset("ScenarioRP_48x48.ico")
+    if not icon_path.exists():
+        icon_path = paths.asset("myLogo.png")
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 

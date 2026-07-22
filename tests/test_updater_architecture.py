@@ -19,7 +19,7 @@ from app.updater.updater_main import parse_args
 
 class UpdaterArchitectureTests(unittest.TestCase):
     def test_client_imports_are_available_from_client_package(self) -> None:
-        self.assertEqual(APP_VERSION, "0.1.1")
+        self.assertEqual(APP_VERSION, "0.1.2")
         self.assertIs(GitHubReleaseProvider, GitHubReleaseProvider)
         self.assertIs(UpdateDownloader, UpdateDownloader)
         self.assertIs(UpdateManager, UpdateManager)

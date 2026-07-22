@@ -16,6 +16,7 @@ def create_valid_distribution(root: Path) -> None:
     write_file(root / "ScenarioRP-Manager.exe", "manager")
     write_file(root / "ScenarioRPUpdater.exe", "updater")
     (root / "_internal").mkdir(parents=True)
+    write_file(root / "assets" / "ScenarioRP_48x48.ico", "ico")
     write_file(root / "assets" / "myLogo.png", "png")
     write_file(root / "system_data" / "config.json", "{}")
     write_file(root / "system_data" / "update_config.json", "{}")
@@ -24,7 +25,7 @@ def create_valid_distribution(root: Path) -> None:
 
 class WindowsBuildHelperTests(unittest.TestCase):
     def test_read_app_version_uses_existing_source(self) -> None:
-        self.assertEqual(build_windows.read_app_version(), "0.1.1")
+        self.assertEqual(build_windows.read_app_version(), "0.1.2")
 
     def test_validate_distribution_accepts_clean_portable_layout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
