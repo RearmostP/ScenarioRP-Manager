@@ -1,6 +1,6 @@
 {
   "provider": "github",
-  "repository": "YOUR_USERNAME/ScenarioRP",
+  "repository": "ScenarioRP/ScenarioRP-Manager",
   "allow_prerelease": false,
   "check_on_startup": true,
   "request_timeout_seconds": 15

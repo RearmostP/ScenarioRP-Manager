@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from pathlib import Path
 import re
 from typing import TypeVar
 
-from PySide6.QtCore import QFile, QTimer, QUrl
+from PySide6.QtCore import QFile, QThread, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtWidgets import QLabel, QMainWindow, QPlainTextEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 try:
     from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
@@ -22,10 +23,21 @@ from app.core.config import AppConfig
 from app.paths import AppPaths
 from app.services.process_monitor import ProcessMonitor, SystemStatus
 from app.services.script_runner import ScriptResult, ScriptRunner
+from app.ui.update import UpdateCheckWorker, UpdateDialog, UpdateDownloadWorker
+from app.updater import (
+    APP_VERSION,
+    GitHubReleaseProvider,
+    UpdateDownloader,
+    UpdateManager,
+    UpdateRelease,
+    load_update_config,
+)
 
 
 WidgetT = TypeVar("WidgetT", bound=QWidget)
 SCRIPT_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \| ")
+LOGGER = logging.getLogger(__name__)
+LOGGER.addHandler(logging.NullHandler())
 
 
 class MainWindow(QMainWindow):
@@ -36,6 +48,13 @@ class MainWindow(QMainWindow):
         scripts_dir = paths.app_file("scripts")
         self.action_runner = ScriptRunner(scripts_dir, paths.manager_dir, paths.script_environment(), self)
         self.monitor = ProcessMonitor(config, paths)
+        self._update_check_thread: QThread | None = None
+        self._update_check_worker: UpdateCheckWorker | None = None
+        self._update_download_thread: QThread | None = None
+        self._update_download_worker: UpdateDownloadWorker | None = None
+        self._update_dialog: UpdateDialog | None = None
+        self._update_manager: UpdateManager | None = None
+        self._manual_update_check = False
         self.web_view: QWebEngineView | None = None
         self.web_profile: QWebEngineProfile | None = None
         self._txadmin_loaded = False
@@ -51,6 +70,7 @@ class MainWindow(QMainWindow):
         self.status_timer.timeout.connect(self.refresh_status)
         self.status_timer.start(4000)
         self.refresh_status()
+        QTimer.singleShot(0, self._maybe_check_for_updates_on_startup)
 
     def _load_designer_ui(self) -> None:
         ui_path = self.paths.app_file("ui", "main_window.ui")
@@ -94,6 +114,7 @@ class MainWindow(QMainWindow):
         self.dashboard_database_state_label = self._widget("dashboardDatabaseStateLabel", QLabel)
         self.txadmin_tab = self._widget("txadminTab", QWidget)
         self.txadmin_container = self._widget("txadminContainer", QWidget)
+        self.settings_tab = self._widget("settingsTab", QWidget)
         self.log_viewer = self._widget("logViewer", QPlainTextEdit)
 
         self.project_root_label.setText(str(self.paths.resolve_project_path(self.config.fxserver_exe)))
@@ -101,6 +122,10 @@ class MainWindow(QMainWindow):
         self.finish_shutdown_button.setEnabled(False)
         self.log_viewer.setFont(QFont("Consolas", 10))
         self.log_viewer.setReadOnly(True)
+        self.check_updates_button = QPushButton("Check for updates", self.settings_tab)
+        settings_layout = self.settings_tab.layout()
+        if settings_layout is not None:
+            settings_layout.addWidget(self.check_updates_button)
 
     def _setup_txadmin_view(self) -> None:
         layout = self.txadmin_container.layout()
@@ -146,6 +171,7 @@ class MainWindow(QMainWindow):
         self.action_runner.finished.connect(self.action_finished)
         self.start_button.clicked.connect(self.start_server)
         self.finish_shutdown_button.clicked.connect(self.close_server_shell)
+        self.check_updates_button.clicked.connect(self.check_for_updates_manually)
 
     def append_output(self, text: str) -> None:
         if not text:
@@ -157,6 +183,135 @@ class MainWindow(QMainWindow):
             else:
                 self.log_viewer.appendPlainText(f"{timestamp} | {line}")
         self.log_viewer.verticalScrollBar().setValue(self.log_viewer.verticalScrollBar().maximum())
+
+    def check_for_updates_manually(self) -> None:
+        self._start_update_check(manual=True)
+
+    def _maybe_check_for_updates_on_startup(self) -> None:
+        try:
+            update_config = load_update_config(self.paths.update_config)
+        except Exception as exc:
+            LOGGER.warning("Could not load update config: %s", exc)
+            return
+
+        if update_config.check_on_startup:
+            self._start_update_check(manual=False)
+
+    def _start_update_check(self, manual: bool) -> None:
+        if self._update_check_thread is not None:
+            if manual:
+                QMessageBox.information(self, "בדיקת עדכונים", "בדיקת עדכונים כבר פעילה.")
+            return
+
+        try:
+            self._update_manager = self._create_update_manager()
+        except Exception as exc:
+            LOGGER.warning("Could not initialize update manager: %s", exc)
+            if manual:
+                QMessageBox.warning(self, "שגיאת עדכונים", str(exc))
+            return
+
+        self._manual_update_check = manual
+        self.check_updates_button.setEnabled(False)
+
+        thread = QThread(self)
+        worker = UpdateCheckWorker(self._update_manager)
+        worker.moveToThread(thread)
+
+        thread.started.connect(worker.run)
+        worker.update_available.connect(self._update_available)
+        worker.no_update.connect(self._no_update_available)
+        worker.error.connect(self._update_check_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._update_check_finished)
+
+        self._update_check_thread = thread
+        self._update_check_worker = worker
+        thread.start()
+
+    def _create_update_manager(self) -> UpdateManager:
+        update_config = load_update_config(self.paths.update_config)
+        provider = GitHubReleaseProvider(
+            repository=update_config.repository,
+            allow_prerelease=update_config.allow_prerelease,
+            timeout_seconds=update_config.request_timeout_seconds,
+        )
+        downloader = UpdateDownloader(timeout_seconds=update_config.request_timeout_seconds)
+        return UpdateManager(provider=provider, downloader=downloader, current_version=APP_VERSION)
+
+    def _update_available(self, release: UpdateRelease) -> None:
+        self._show_update_dialog(release)
+
+    def _no_update_available(self) -> None:
+        if self._manual_update_check:
+            QMessageBox.information(self, "בדיקת עדכונים", "התוכנה מעודכנת.")
+
+    def _update_check_error(self, message: str) -> None:
+        LOGGER.warning("Update check failed: %s", message)
+        if self._manual_update_check:
+            QMessageBox.warning(self, "שגיאת עדכונים", message)
+
+    def _update_check_finished(self) -> None:
+        self._update_check_thread = None
+        self._update_check_worker = None
+        self._manual_update_check = False
+        self.check_updates_button.setEnabled(True)
+
+    def _show_update_dialog(self, release: UpdateRelease) -> None:
+        dialog = UpdateDialog(APP_VERSION, release, self)
+        dialog.download_requested.connect(self._download_update)
+        self._update_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _download_update(self, release: UpdateRelease) -> None:
+        if self._update_download_thread is not None:
+            return
+        if self._update_manager is None:
+            try:
+                self._update_manager = self._create_update_manager()
+            except Exception as exc:
+                LOGGER.warning("Could not initialize update downloader: %s", exc)
+                if self._update_dialog is not None:
+                    self._update_dialog.show_download_error(str(exc))
+                return
+
+        thread = QThread(self)
+        worker = UpdateDownloadWorker(self._update_manager, release, self.paths.update_downloads)
+        worker.moveToThread(thread)
+
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._download_progress)
+        worker.completed.connect(self._download_completed)
+        worker.error.connect(self._download_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._download_finished)
+
+        self._update_download_thread = thread
+        self._update_download_worker = worker
+        thread.start()
+
+    def _download_progress(self, downloaded_bytes: int, total_bytes: int, percent: int) -> None:
+        if self._update_dialog is not None:
+            self._update_dialog.set_download_progress(downloaded_bytes, total_bytes, percent)
+
+    def _download_completed(self, path: object) -> None:
+        if self._update_dialog is not None and isinstance(path, Path):
+            self._update_dialog.show_download_finished(path)
+
+    def _download_error(self, message: str) -> None:
+        LOGGER.warning("Update download failed: %s", message)
+        if self._update_dialog is not None:
+            self._update_dialog.show_download_error(message)
+
+    def _download_finished(self) -> None:
+        self._update_download_thread = None
+        self._update_download_worker = None
 
     def run_script(self, script_name: str) -> None:
         if self.action_runner.run_script(script_name):
