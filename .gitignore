@@ -1,0 +1,9 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+user_data/logs/
+user_data/cache/
+user_data/saves/
+user_data/state/
+user_data/updates/

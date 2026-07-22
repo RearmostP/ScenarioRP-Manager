@@ -1,0 +1,12 @@
+{
+  "fxserver_exe": "C:/ScenarioRP/server/FXServer.exe",
+  "txdata_dir": "C:/ScenarioRP/txData/ScenarioRP",
+  "server_cfg": "C:/ScenarioRP/txData/ScenarioRP/server.cfg",
+  "discord_bot_dir": "C:/ScenarioRP/ScenarioRP-Discord-Bots/Server-Status",
+  "discord_bot_python": "C:/ScenarioRP/ScenarioRP-Discord-Bots/Server-Status/.venv/Scripts/python.exe",
+  "discord_bot_file": "C:/ScenarioRP/ScenarioRP-Discord-Bots/Server-Status/bot.py",
+  "txadmin_profile": "default",
+  "txadmin_url": "http://127.0.0.1:40120",
+  "logs_dir": "C:/ScenarioRP/ScenarioRP-Manager/logs",
+  "backups_dir": "backups"
+}
